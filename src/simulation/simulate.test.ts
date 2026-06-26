@@ -38,6 +38,24 @@ function baseRecipe(): Recipe {
   };
 }
 
+function ovenPauseMachine(): MachineSpec {
+  return {
+    ...baseMachine(),
+    stations: [
+      { tankNumber: 0, name: 'Load', numberOfPositions: 5 },
+      { tankNumber: 1, name: 'Etch', numberOfPositions: 1 },
+      { tankNumber: 2, name: 'Rinse', numberOfPositions: 1 },
+      {
+        tankNumber: 6,
+        name: 'Oven',
+        numberOfPositions: 5,
+        timerPausePolicy: 'pauseOnEntryOrExitMove',
+      },
+      { tankNumber: 15, name: 'Unload', numberOfPositions: 5 },
+    ],
+  };
+}
+
 describe('simulate', () => {
   it('simulates the example U50 recipe', () => {
     const outcome = simulate(baseMachine(), baseRecipe(), scenario);
@@ -147,5 +165,94 @@ describe('simulate', () => {
     expect(outcome.ok).toBe(false);
     if (outcome.ok) return;
     expect(outcome.errors.map((error) => error.code)).toContain('simulation.zeroWorkload');
+  });
+
+  it('adds oven countdown pause for moves entering and exiting the oven', () => {
+    const recipe = baseRecipe();
+    recipe.stages = [
+      { tankNumber: 0, processTimeSeconds: 0 },
+      { tankNumber: 6, processTimeSeconds: 300 },
+      { tankNumber: 2, processTimeSeconds: 0 },
+    ];
+
+    const outcome = simulate(ovenPauseMachine(), recipe, scenario);
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    const oven = outcome.result.utilization.find((entry) => entry.label === 'Oven (tank 6)');
+    expect(oven?.workloadSeconds).toBe(80);
+    expect(outcome.result.cycleTimeSeconds).toBe(80);
+    expect(outcome.result.bottlenecks).toEqual(['Oven (tank 6)']);
+  });
+
+  it('counts the final unload move as an oven exit pause', () => {
+    const recipe = baseRecipe();
+    recipe.stages = [
+      { tankNumber: 0, processTimeSeconds: 0 },
+      { tankNumber: 6, processTimeSeconds: 300 },
+    ];
+
+    const outcome = simulate(ovenPauseMachine(), recipe, scenario);
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    const oven = outcome.result.utilization.find((entry) => entry.label === 'Oven (tank 6)');
+    expect(oven?.workloadSeconds).toBe(80);
+  });
+
+  it('does not add oven pause time to outside station workloads', () => {
+    const recipe = baseRecipe();
+    recipe.stages = [
+      { tankNumber: 0, processTimeSeconds: 0 },
+      { tankNumber: 1, processTimeSeconds: 100 },
+      { tankNumber: 6, processTimeSeconds: 300 },
+      { tankNumber: 2, processTimeSeconds: 0 },
+    ];
+
+    const outcome = simulate(ovenPauseMachine(), recipe, scenario);
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    const etch = outcome.result.utilization.find((entry) => entry.label === 'Etch (tank 1)');
+    const oven = outcome.result.utilization.find((entry) => entry.label === 'Oven (tank 6)');
+    expect(etch?.workloadSeconds).toBe(100);
+    expect(oven?.workloadSeconds).toBe(80);
+  });
+
+  it('does not count internal oven-to-oven moves as entry or exit pauses', () => {
+    const recipe = baseRecipe();
+    recipe.stages = [
+      { tankNumber: 0, processTimeSeconds: 0 },
+      { tankNumber: 6, processTimeSeconds: 100 },
+      { tankNumber: 6, processTimeSeconds: 50 },
+      { tankNumber: 2, processTimeSeconds: 0 },
+    ];
+
+    const outcome = simulate(ovenPauseMachine(), recipe, scenario);
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    const oven = outcome.result.utilization.find((entry) => entry.label === 'Oven (tank 6)');
+    expect(oven?.workloadSeconds).toBe(50);
+  });
+
+  it('rejects unsupported station timer pause policies', () => {
+    const machine = ovenPauseMachine();
+    machine.stations[3] = {
+      ...machine.stations[3],
+      timerPausePolicy: 'badPolicy' as MachineSpec['stations'][number]['timerPausePolicy'],
+    };
+
+    const outcome = simulate(machine, baseRecipe(), scenario);
+
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.errors.map((error) => error.code)).toContain(
+      'machine.station.timerPausePolicy',
+    );
   });
 });

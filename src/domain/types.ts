@@ -9,10 +9,13 @@ export interface RobotSpec {
   reachableTankNumbers: TankRange;
 }
 
+export type StationTimerPausePolicy = 'none' | 'pauseOnEntryOrExitMove';
+
 export interface MachineStation {
   tankNumber: number;
   name: string;
   numberOfPositions: number;
+  timerPausePolicy?: StationTimerPausePolicy;
 }
 
 export interface MachineSpec {

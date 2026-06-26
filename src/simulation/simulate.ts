@@ -9,6 +9,12 @@ import type {
 } from '../domain/types';
 
 const EPSILON = 0.000001;
+const TIMER_PAUSE_POLICIES = new Set(['none', 'pauseOnEntryOrExitMove']);
+
+interface RecipeMove {
+  fromTankNumber: number;
+  toTankNumber: number;
+}
 
 export function simulate(
   machine: MachineSpec,
@@ -42,6 +48,7 @@ export function simulate(
   }
 
   const moveCount = recipe.stages.length;
+  const moves = buildRecipeMoves(recipe, unloadStation.tankNumber);
   const stationWorkloads = new Map<number, number>();
 
   for (const stage of recipe.stages) {
@@ -56,10 +63,18 @@ export function simulate(
         return undefined;
       }
 
+      const baseWorkloadSeconds = totalProcessTime / station.numberOfPositions;
+      const pauseSeconds = stationPauseSeconds(
+        station,
+        moves,
+        scenario.moveTimeSeconds,
+        totalProcessTime,
+      );
+
       return {
         label: stationLabel(station),
         kind: 'station' as const,
-        workloadSeconds: totalProcessTime / station.numberOfPositions,
+        workloadSeconds: baseWorkloadSeconds + pauseSeconds,
         utilizationPercent: 0,
       };
     })
@@ -167,6 +182,17 @@ function validateMachine(
         code: 'machine.station.numberOfPositions',
         field: `machine.stations.${station.tankNumber}.numberOfPositions`,
         message: `Station ${stationLabel(station)} must have at least one position.`,
+      });
+    }
+
+    if (
+      station.timerPausePolicy !== undefined &&
+      !TIMER_PAUSE_POLICIES.has(station.timerPausePolicy)
+    ) {
+      errors.push({
+        code: 'machine.station.timerPausePolicy',
+        field: `machine.stations.${station.tankNumber}.timerPausePolicy`,
+        message: `Station ${stationLabel(station)} has an unsupported timer pause policy.`,
       });
     }
   }
@@ -291,6 +317,36 @@ function validateRecipe(
     // Zero move time is valid; this branch documents that the zero-workload
     // check after workload construction handles all-zero recipes.
   }
+}
+
+function buildRecipeMoves(recipe: Recipe, unloadTankNumber: number): RecipeMove[] {
+  return recipe.stages.map((stage, index) => ({
+    fromTankNumber: stage.tankNumber,
+    toTankNumber: recipe.stages[index + 1]?.tankNumber ?? unloadTankNumber,
+  }));
+}
+
+function stationPauseSeconds(
+  station: MachineStation,
+  moves: RecipeMove[],
+  moveTimeSeconds: number,
+  totalProcessTime: number,
+): number {
+  if (
+    totalProcessTime <= 0 ||
+    station.timerPausePolicy !== 'pauseOnEntryOrExitMove' ||
+    moveTimeSeconds === 0
+  ) {
+    return 0;
+  }
+
+  const boundaryMoveCount = moves.filter(
+    (move) =>
+      (move.fromTankNumber === station.tankNumber) !==
+      (move.toTankNumber === station.tankNumber),
+  ).length;
+
+  return boundaryMoveCount * moveTimeSeconds;
 }
 
 function isReachable(machine: MachineSpec, tankNumber: number): boolean {
