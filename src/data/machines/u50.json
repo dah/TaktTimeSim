@@ -42,7 +42,8 @@
     {
       "tankNumber": 6,
       "name": "Oven",
-      "numberOfPositions": 5
+      "numberOfPositions": 5,
+      "timerPausePolicy": "pauseOnEntryOrExitMove"
     },
     {
       "tankNumber": 7,

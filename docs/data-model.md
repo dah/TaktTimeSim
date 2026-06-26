@@ -1,5 +1,22 @@
 # Data Model Notes
 
+## Machine
+
+Machine stations can optionally define timer behavior that affects how process
+countdown overlaps with robot moves. If `timerPausePolicy` is omitted or set to
+`none`, the station uses normal countdown behavior.
+
+The U50 oven uses:
+
+```json
+"timerPausePolicy": "pauseOnEntryOrExitMove"
+```
+
+For this policy, jobs in that station stop counting down during moves into or out
+of the station. Jobs in other stations continue counting down normally during
+those moves. The simulator represents this as station-specific effective
+workload, not as a global pause.
+
 ## Recipe
 
 A recipe is an ordered series of process stages. Each stage references a machine
