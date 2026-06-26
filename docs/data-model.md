@@ -33,6 +33,19 @@ Example:
 }
 ```
 
+## Saved recipes
+
+User-saved recipes are local-only and stored in browser `localStorage` under a
+versioned saved-recipes collection. Each saved entry contains the plain recipe
+fields plus local metadata:
+
+- `id`: stable local identifier for load/update/delete actions.
+- `createdAt`: ISO timestamp when the saved recipe was created.
+- `updatedAt`: ISO timestamp when the saved recipe was last updated.
+
+The simulation engine still consumes plain `Recipe` data. The UI strips saved
+metadata when loading a recipe into the editor.
+
 ## Scenario
 
 A scenario contains run assumptions that are separate from the machine spec and

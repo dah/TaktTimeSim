@@ -2,12 +2,20 @@ import type {
   MachineSpec,
   Recipe,
   RecipeStage,
+  SavedRecipe,
   Scenario,
   SimulationOutcome,
   SimulationResult,
 } from '../domain/types';
 import { simulate } from '../simulation/simulate';
-import { saveRecipeDraft, saveScenarioDraft } from '../storage/localStorageStore';
+import {
+  makeSavedRecipe,
+  saveRecipeDraft,
+  saveSavedRecipes,
+  saveScenarioDraft,
+  savedRecipeToRecipe,
+  updateSavedRecipeFromRecipe,
+} from '../storage/localStorageStore';
 
 interface AppOptions {
   machine: MachineSpec;
@@ -15,18 +23,36 @@ interface AppOptions {
   initialRecipe: Recipe;
   initialScenario: Scenario;
   defaultScenario: Scenario;
+  initialSavedRecipes: SavedRecipe[];
   storage?: Storage;
+}
+
+interface StatusMessage {
+  kind: 'success' | 'error' | 'info';
+  text: string;
 }
 
 interface AppState {
   recipe: Recipe;
   scenario: Scenario;
+  savedRecipes: SavedRecipe[];
+  activeRecipeId: string;
+  selectedRecipeId: string;
+  recipeDirty: boolean;
+  statusMessage?: StatusMessage;
 }
 
 export function mountApp(root: HTMLElement, options: AppOptions): void {
+  const matchedRecipe = options.initialSavedRecipes.find((savedRecipe) =>
+    recipesMatch(savedRecipe, options.initialRecipe),
+  );
   const state: AppState = {
     recipe: cloneRecipe(options.initialRecipe),
     scenario: { ...options.initialScenario },
+    savedRecipes: options.initialSavedRecipes.map(cloneSavedRecipe),
+    activeRecipeId: matchedRecipe?.id ?? '',
+    selectedRecipeId: matchedRecipe?.id ?? '',
+    recipeDirty: !matchedRecipe,
   };
 
   const unloadStation = options.machine.stations.find(
@@ -40,15 +66,13 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     const focusKey = currentFocusKey(root);
     const outcome = simulate(options.machine, state.recipe, state.scenario);
 
-    if (outcome.ok) {
-      saveRecipeDraft(options.storage, state.recipe);
-      saveScenarioDraft(options.storage, state.scenario);
-    }
+    saveRecipeDraft(options.storage, state.recipe);
+    saveScenarioDraft(options.storage, state.scenario);
 
     root.innerHTML = '';
     root.append(
       headerTemplate(),
-      recipeTemplate(),
+      recipeTemplate(outcome),
       scenarioTemplate(),
       outcomeTemplate(outcome),
     );
@@ -65,7 +89,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     return header;
   }
 
-  function recipeTemplate(): HTMLElement {
+  function recipeTemplate(outcome: SimulationOutcome): HTMLElement {
     const section = element('section', 'card');
     const titleRow = element('div', 'section-title-row');
     titleRow.innerHTML = `
@@ -81,6 +105,10 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     resetButton.addEventListener('click', () => {
       state.recipe = cloneRecipe(options.exampleRecipe);
       state.scenario = { ...options.defaultScenario };
+      state.activeRecipeId = '';
+      state.selectedRecipeId = '';
+      state.recipeDirty = true;
+      state.statusMessage = { kind: 'info', text: 'Example recipe restored. Saved recipes were not changed.' };
       render();
     });
     titleRow.append(resetButton);
@@ -92,6 +120,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     nameInput.value = state.recipe.name;
     nameInput.addEventListener('input', () => {
       state.recipe.name = nameInput.value;
+      markRecipeDirty();
       render();
     });
     nameLabel.append(nameInput);
@@ -121,11 +150,60 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     addButton.addEventListener('click', () => {
       const fallbackTank = editableStations.find((station) => station.tankNumber !== 0)?.tankNumber ?? 0;
       state.recipe.stages.push({ tankNumber: fallbackTank, processTimeSeconds: 0 });
+      markRecipeDirty();
       render();
     });
 
-    section.append(titleRow, nameLabel, table, addButton);
+    section.append(titleRow, recipeLibraryTemplate(outcome), nameLabel, table, addButton);
     return section;
+  }
+
+  function recipeLibraryTemplate(outcome: SimulationOutcome): HTMLElement {
+    const wrapper = element('div', 'recipe-library');
+    const savedRecipes = visibleSavedRecipes();
+    const controls = element('div', 'recipe-library-controls');
+
+    const selectLabel = labelWithText('Saved recipes');
+    const select = element('select');
+    select.dataset.focusKey = 'saved-recipe-select';
+    select.append(optionElement('', 'Choose saved recipe…', state.selectedRecipeId === ''));
+
+    for (const savedRecipe of savedRecipes) {
+      select.append(
+        optionElement(savedRecipe.id, `${savedRecipe.name} — updated ${formatDate(savedRecipe.updatedAt)}`, savedRecipe.id === state.selectedRecipeId),
+      );
+    }
+
+    select.addEventListener('change', () => {
+      state.selectedRecipeId = select.value;
+      render();
+    });
+    selectLabel.append(select);
+
+    const actions = element('div', 'recipe-library-actions');
+    const loadButton = actionButton('Load', state.selectedRecipeId === '', () => loadSelectedRecipe());
+    const saveButton = actionButton('Save', !canSaveRecipe(outcome), () => saveActiveRecipe(outcome, false));
+    const saveAsButton = actionButton('Save as new', !canSaveRecipe(outcome), () => saveActiveRecipe(outcome, true));
+    const deleteButton = actionButton('Delete', state.selectedRecipeId === '', () => deleteSelectedRecipe());
+    deleteButton.classList.add('danger-button');
+    actions.append(loadButton, saveButton, saveAsButton, deleteButton);
+
+    controls.append(selectLabel, actions);
+    wrapper.append(controls);
+
+    const hint = element('p', 'recipe-library-hint');
+    hint.textContent = state.recipeDirty
+      ? 'Unsaved recipe changes are kept as a draft on this device. Use Save to update your saved list.'
+      : 'This recipe is saved. Draft recovery still restores the latest editor state after refresh.';
+    wrapper.append(hint);
+
+    if (state.statusMessage) {
+      const message = element('p', `status-message ${state.statusMessage.kind}`);
+      message.textContent = state.statusMessage.text;
+      wrapper.append(message);
+    }
+
+    return wrapper;
   }
 
   function stageRow(stage: RecipeStage, index: number): HTMLTableRowElement {
@@ -154,6 +232,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       }
       select.addEventListener('change', () => {
         stage.tankNumber = Number(select.value);
+        markRecipeDirty();
         render();
       });
       tankCell.append(select);
@@ -168,6 +247,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     timeInput.value = numberInputValue(stage.processTimeSeconds);
     timeInput.addEventListener('input', () => {
       stage.processTimeSeconds = parseNumberInput(timeInput.value);
+      markRecipeDirty();
       render();
     });
     timeCell.append(timeInput);
@@ -179,6 +259,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       removeButton.textContent = 'Remove';
       removeButton.addEventListener('click', () => {
         state.recipe.stages.splice(index, 1);
+        markRecipeDirty();
         render();
       });
       actionCell.append(removeButton);
@@ -289,6 +370,102 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     return table;
   }
 
+  function loadSelectedRecipe(): void {
+    const savedRecipe = state.savedRecipes.find((recipe) => recipe.id === state.selectedRecipeId);
+
+    if (!savedRecipe) {
+      return;
+    }
+
+    if (state.recipeDirty && !window.confirm('Load this saved recipe and replace the current unsaved recipe changes?')) {
+      return;
+    }
+
+    state.recipe = savedRecipeToRecipe(savedRecipe);
+    state.activeRecipeId = savedRecipe.id;
+    state.selectedRecipeId = savedRecipe.id;
+    state.recipeDirty = false;
+    state.statusMessage = { kind: 'success', text: `Loaded "${savedRecipe.name}".` };
+    render();
+  }
+
+  function saveActiveRecipe(outcome: SimulationOutcome, forceNew: boolean): void {
+    if (!canSaveRecipe(outcome)) {
+      state.statusMessage = { kind: 'error', text: recipeValidationMessage(outcome) };
+      render();
+      return;
+    }
+
+    const existing = forceNew ? undefined : state.savedRecipes.find((recipe) => recipe.id === state.activeRecipeId);
+    const nextRecipe = existing
+      ? updateSavedRecipeFromRecipe(existing, state.recipe)
+      : makeSavedRecipe(state.recipe);
+    const nextRecipes = existing
+      ? state.savedRecipes.map((recipe) => (recipe.id === existing.id ? nextRecipe : recipe))
+      : [...state.savedRecipes, nextRecipe];
+    const result = saveSavedRecipes(options.storage, nextRecipes);
+
+    if (!result.ok) {
+      state.statusMessage = { kind: 'error', text: result.message ?? 'Unable to save recipe.' };
+      render();
+      return;
+    }
+
+    state.savedRecipes = nextRecipes;
+    state.activeRecipeId = nextRecipe.id;
+    state.selectedRecipeId = nextRecipe.id;
+    state.recipeDirty = false;
+    state.statusMessage = {
+      kind: 'success',
+      text: existing ? `Saved changes to "${nextRecipe.name}".` : `Saved "${nextRecipe.name}".`,
+    };
+    render();
+  }
+
+  function deleteSelectedRecipe(): void {
+    const savedRecipe = state.savedRecipes.find((recipe) => recipe.id === state.selectedRecipeId);
+
+    if (!savedRecipe) {
+      return;
+    }
+
+    if (!window.confirm(`Delete saved recipe "${savedRecipe.name}"? Current editor contents will remain open.`)) {
+      return;
+    }
+
+    const nextRecipes = state.savedRecipes.filter((recipe) => recipe.id !== savedRecipe.id);
+    const result = saveSavedRecipes(options.storage, nextRecipes);
+
+    if (!result.ok) {
+      state.statusMessage = { kind: 'error', text: result.message ?? 'Unable to delete recipe.' };
+      render();
+      return;
+    }
+
+    state.savedRecipes = nextRecipes;
+    if (state.activeRecipeId === savedRecipe.id) {
+      state.activeRecipeId = '';
+      state.recipeDirty = true;
+    }
+    state.selectedRecipeId = '';
+    state.statusMessage = { kind: 'success', text: `Deleted "${savedRecipe.name}".` };
+    render();
+  }
+
+  function visibleSavedRecipes(): SavedRecipe[] {
+    return state.savedRecipes
+      .filter((recipe) => recipe.machineName === options.machine.machineName)
+      .sort((left, right) => {
+        const updatedDiff = Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+        return updatedDiff || left.name.localeCompare(right.name);
+      });
+  }
+
+  function markRecipeDirty(): void {
+    state.recipeDirty = true;
+    state.statusMessage = undefined;
+  }
+
   render();
 }
 
@@ -309,6 +486,35 @@ function labelWithText(text: string): HTMLLabelElement {
   span.textContent = text;
   label.append(span);
   return label;
+}
+
+function optionElement(value: string, text: string, selected: boolean): HTMLOptionElement {
+  const option = element('option');
+  option.value = value;
+  option.textContent = text;
+  option.selected = selected;
+  return option;
+}
+
+function actionButton(text: string, disabled: boolean, onClick: () => void): HTMLButtonElement {
+  const button = element('button', 'secondary-button');
+  button.type = 'button';
+  button.textContent = text;
+  button.disabled = disabled;
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function canSaveRecipe(outcome: SimulationOutcome): boolean {
+  return outcome.ok || outcome.errors.every((error) => !error.field.startsWith('recipe.') && !error.field.startsWith('machine.'));
+}
+
+function recipeValidationMessage(outcome: SimulationOutcome): string {
+  if (outcome.ok) {
+    return '';
+  }
+
+  return outcome.errors.find((error) => error.field.startsWith('recipe.') || error.field.startsWith('machine.'))?.message ?? 'Fix recipe errors before saving.';
 }
 
 function parseNumberInput(value: string): number {
@@ -333,19 +539,40 @@ function formatNumber(value: number): string {
   }).format(value);
 }
 
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
 function cloneRecipe(recipe: Recipe): Recipe {
   return {
-    ...recipe,
+    name: recipe.name,
+    machineName: recipe.machineName,
     stages: recipe.stages.map((stage) => ({ ...stage })),
   };
 }
 
+function cloneSavedRecipe(recipe: SavedRecipe): SavedRecipe {
+  return {
+    ...cloneRecipe(recipe),
+    id: recipe.id,
+    createdAt: recipe.createdAt,
+    updatedAt: recipe.updatedAt,
+  };
+}
+
+function recipesMatch(left: Recipe, right: Recipe): boolean {
+  return JSON.stringify(cloneRecipe(left)) === JSON.stringify(cloneRecipe(right));
+}
+
 function escapeHtml(value: string): string {
   return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
+    .replaceAll('&', '&')
+    .replaceAll('<', '<')
+    .replaceAll('>', '>')
+    .replaceAll('"', '"')
     .replaceAll("'", '&#039;');
 }
 
