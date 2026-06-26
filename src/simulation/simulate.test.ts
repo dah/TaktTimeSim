@@ -190,6 +190,29 @@ describe('simulate', () => {
     expect(outcome.result.bottlenecks).toEqual(['Oven (tank 6)']);
   });
 
+  it('caps oven countdown pause at 15 seconds per entry or exit move', () => {
+    const recipe = baseRecipe();
+    recipe.stages = [
+      { tankNumber: 0, processTimeSeconds: 0 },
+      { tankNumber: 6, processTimeSeconds: 300 },
+      { tankNumber: 2, processTimeSeconds: 0 },
+    ];
+
+    const outcome = simulate(ovenPauseMachine(), recipe, {
+      moveTimeSeconds: 45,
+      shiftLengthHours: 8,
+    });
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    const oven = outcome.result.utilization.find((entry) => entry.label === 'Oven (tank 6)');
+    const robot = outcome.result.utilization.find((entry) => entry.label === 'Robot');
+    expect(oven?.workloadSeconds).toBe(90);
+    expect(robot?.workloadSeconds).toBe(135);
+    expect(outcome.result.cycleTimeSeconds).toBe(135);
+  });
+
   it('counts the final unload move as an oven exit pause', () => {
     const recipe = baseRecipe();
     recipe.stages = [

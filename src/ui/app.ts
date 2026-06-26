@@ -73,6 +73,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
 
   function render(): void {
     const focusKey = currentFocusKey(root);
+    resetUnlinkedRecipePercentages();
     const outcome = simulateRecipeMix(options.machine, state.recipeMix, state.scenario);
 
     saveRecipeMixDraft(options.storage, state.recipeMix);
@@ -538,8 +539,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
   }
 
   function findMixEntryForSavedRecipe(savedRecipe: SavedRecipe): RecipeMixEntry | undefined {
-    return state.recipeMix.entries.find((entry) => state.activeRecipeIds[entry.id] === savedRecipe.id)
-      ?? state.recipeMix.entries.find((entry) => recipesMatch(entry.recipe, savedRecipe));
+    return state.recipeMix.entries.find((entry) => state.activeRecipeIds[entry.id] === savedRecipe.id);
   }
 
   function ensureSavedRecipeEntry(savedRecipe: SavedRecipe): RecipeMixEntry {
@@ -573,6 +573,18 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
   function currentEditorEntry(): RecipeMixEntry | undefined {
     return state.recipeMix.entries.find((entry) => entry.id === state.editingEntryId)
       ?? state.recipeMix.entries[0];
+  }
+
+  function resetUnlinkedRecipePercentages(): void {
+    if (state.savedRecipes.length === 0) {
+      return;
+    }
+
+    for (const entry of state.recipeMix.entries) {
+      if (!state.activeRecipeIds[entry.id]) {
+        entry.percentage = 0;
+      }
+    }
   }
 
   function saveActiveRecipe(entry: RecipeMixEntry, outcome: SimulationOutcome, forceNew: boolean): void {
@@ -609,10 +621,13 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
   }
 
   function deleteSavedRecipe(savedRecipe: SavedRecipe): void {
-    if (!window.confirm(`Delete saved recipe "${savedRecipe.name}"? Current editor contents will remain open.`)) {
+    if (!window.confirm(`Delete saved recipe "${savedRecipe.name}"? It will be removed from the current mix.`)) {
       return;
     }
 
+    const deletedEntryIds = state.recipeMix.entries
+      .filter((entry) => state.activeRecipeIds[entry.id] === savedRecipe.id)
+      .map((entry) => entry.id);
     const nextRecipes = state.savedRecipes.filter((recipe) => recipe.id !== savedRecipe.id);
     const result = saveSavedRecipes(options.storage, nextRecipes);
 
@@ -626,16 +641,18 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     }
 
     state.savedRecipes = nextRecipes;
-    const affectedEntryIds: string[] = [];
-    for (const recipeEntry of state.recipeMix.entries) {
-      if (state.activeRecipeIds[recipeEntry.id] === savedRecipe.id) {
-        delete state.activeRecipeIds[recipeEntry.id];
-        state.dirtyRecipeIds.add(recipeEntry.id);
-        affectedEntryIds.push(recipeEntry.id);
-      }
+    state.recipeMix.entries = state.recipeMix.entries.filter(
+      (entry) => !deletedEntryIds.includes(entry.id),
+    );
+
+    for (const entryId of deletedEntryIds) {
+      delete state.activeRecipeIds[entryId];
+      delete state.statusMessages[entryId];
+      state.dirtyRecipeIds.delete(entryId);
     }
-    for (const entryId of affectedEntryIds) {
-      state.statusMessages[entryId] = { kind: 'success', text: `Deleted "${savedRecipe.name}".` };
+
+    if (state.editingEntryId && deletedEntryIds.includes(state.editingEntryId)) {
+      state.editingEntryId = state.recipeMix.entries[0]?.id;
     }
     render();
   }
@@ -650,7 +667,10 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
   }
 
   function initializeRecipeLibraryState(entry: RecipeMixEntry): void {
-    const matchedRecipe = state.savedRecipes.find((savedRecipe) => recipesMatch(savedRecipe, entry.recipe));
+    const mappedSavedRecipeIds = new Set(Object.values(state.activeRecipeIds));
+    const matchedRecipe = state.savedRecipes.find(
+      (savedRecipe) => !mappedSavedRecipeIds.has(savedRecipe.id) && recipesMatch(savedRecipe, entry.recipe),
+    );
 
     if (matchedRecipe) {
       state.activeRecipeIds[entry.id] = matchedRecipe.id;

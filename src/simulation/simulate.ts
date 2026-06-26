@@ -9,6 +9,7 @@ import type {
 } from '../domain/types';
 
 const EPSILON = 0.000001;
+const MAX_TIMER_PAUSE_SECONDS_PER_BOUNDARY_MOVE = 15;
 const TIMER_PAUSE_POLICIES = new Set(['none', 'pauseOnEntryOrExitMove']);
 
 interface RecipeMove {
@@ -349,7 +350,7 @@ function stationPauseSeconds(
       (move.toTankNumber === station.tankNumber),
   ).length;
 
-  return boundaryMoveCount * moveTimeSeconds;
+  return boundaryMoveCount * Math.min(moveTimeSeconds, MAX_TIMER_PAUSE_SECONDS_PER_BOUNDARY_MOVE);
 }
 
 function isReachable(machine: MachineSpec, tankNumber: number): boolean {

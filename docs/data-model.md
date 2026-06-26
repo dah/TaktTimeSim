@@ -13,9 +13,10 @@ The U50 oven uses:
 ```
 
 For this policy, jobs in that station stop counting down during moves into or out
-of the station. Jobs in other stations continue counting down normally during
-those moves. The simulator represents this as station-specific effective
-workload, not as a global pause.
+of the station. Each qualifying boundary move freezes that station timer for the
+shorter of the robot move time or 15 seconds. Jobs in other stations continue
+counting down normally during those moves. The simulator represents this as
+station-specific effective workload, not as a global pause.
 
 ## Recipe
 
