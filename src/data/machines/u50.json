@@ -1,0 +1,93 @@
+{
+  "machineName": "U50",
+  "robot": {
+    "numberOfArms": 1,
+    "basketCapacity": 1,
+    "reachableTankNumbers": {
+      "from": 0,
+      "to": 15
+    }
+  },
+  "stations": [
+    {
+      "tankNumber": 0,
+      "name": "Load",
+      "numberOfPositions": 5
+    },
+    {
+      "tankNumber": 1,
+      "name": "Etch",
+      "numberOfPositions": 2
+    },
+    {
+      "tankNumber": 2,
+      "name": "Rinse",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 3,
+      "name": "Clean",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 4,
+      "name": "Rinse",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 5,
+      "name": "DI-Rinse",
+      "numberOfPositions": 2
+    },
+    {
+      "tankNumber": 6,
+      "name": "Oven",
+      "numberOfPositions": 5
+    },
+    {
+      "tankNumber": 7,
+      "name": "Coating",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 8,
+      "name": "Cool",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 9,
+      "name": "Coating",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 10,
+      "name": "Cool",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 11,
+      "name": "Coating",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 12,
+      "name": "Cool",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 13,
+      "name": "Coating",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 14,
+      "name": "Cool",
+      "numberOfPositions": 1
+    },
+    {
+      "tankNumber": 15,
+      "name": "Unload",
+      "numberOfPositions": 5
+    }
+  ]
+}
