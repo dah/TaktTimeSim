@@ -28,7 +28,7 @@ Use TypeScript modules to keep ownership boundaries clear:
 
 Include a small scenario model in v1:
 
-- `moveTimeSeconds`, default `10`
+- `moveTimeSeconds`, default `45`
 - `shiftLengthHours`, default `8`
 
 This gives the robot arm a visible effect on throughput without adding a travel-time matrix before real movement timing data exists.

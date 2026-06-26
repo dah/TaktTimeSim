@@ -39,7 +39,7 @@ A scenario contains run assumptions that are separate from the machine spec and
 recipe. Version 1 uses:
 
 - `moveTimeSeconds`: finite, non-negative robot move time applied once per
-  recipe stage, including the final move to unload. The default is `10`.
+  recipe stage, including the final move to unload. The default is `45`.
 - `shiftLengthHours`: finite shift length greater than zero. The default is `8`.
 
 The unload tank remains simulation behavior: users edit process stages before

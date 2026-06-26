@@ -8,7 +8,7 @@ import { mountApp } from './ui/app';
 const machine = u50Machine as MachineSpec;
 const exampleRecipe = exampleU50Recipe as Recipe;
 const defaultScenario: Scenario = {
-  moveTimeSeconds: 10,
+  moveTimeSeconds: 45,
   shiftLengthHours: 8,
 };
 
