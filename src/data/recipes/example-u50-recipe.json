@@ -1,0 +1,14 @@
+{
+  "name": "Example U50 Recipe",
+  "machineName": "U50",
+  "stages": [
+    {
+      "tankNumber": 0,
+      "processTimeSeconds": 0
+    },
+    {
+      "tankNumber": 1,
+      "processTimeSeconds": 300
+    }
+  ]
+}

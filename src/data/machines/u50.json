@@ -46,7 +46,7 @@
     },
     {
       "tankNumber": 7,
-      "name": "Coating",
+      "name": "Coating-Empty",
       "numberOfPositions": 1
     },
     {
@@ -56,7 +56,7 @@
     },
     {
       "tankNumber": 9,
-      "name": "Coating",
+      "name": "Coating-Photo",
       "numberOfPositions": 1
     },
     {
@@ -66,7 +66,7 @@
     },
     {
       "tankNumber": 11,
-      "name": "Coating",
+      "name": "Coating-PR",
       "numberOfPositions": 1
     },
     {
@@ -76,7 +76,7 @@
     },
     {
       "tankNumber": 13,
-      "name": "Coating",
+      "name": "Coating-HC",
       "numberOfPositions": 1
     },
     {
