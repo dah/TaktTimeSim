@@ -110,6 +110,43 @@ select:focus {
   outline: none;
 }
 
+.recipe-panels,
+.mode-results {
+  display: grid;
+  gap: 18px;
+}
+
+.recipe-panel,
+.mode-result {
+  border: 1px solid #e1e8f0;
+  border-radius: 16px;
+  padding: 18px;
+}
+
+.recipe-panel-header {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.recipe-panel-header h3,
+.mode-result h3 {
+  margin: 0;
+}
+
+.recipe-panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.percentage-total {
+  color: #617182;
+  font-weight: 700;
+  margin: -8px 0 16px;
+}
+
 .stage-table,
 .utilization-table {
   border-collapse: collapse;

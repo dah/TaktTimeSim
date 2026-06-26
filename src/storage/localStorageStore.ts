@@ -1,6 +1,7 @@
-import type { Recipe, SavedRecipe, Scenario } from '../domain/types';
+import type { Recipe, RecipeMix, SavedRecipe, Scenario } from '../domain/types';
 
 export const RECIPE_DRAFT_KEY = 'takttimesim.v1.recipeDraft';
+export const RECIPE_MIX_DRAFT_KEY = 'takttimesim.v1.recipeMixDraft';
 export const SCENARIO_DRAFT_KEY = 'takttimesim.v1.scenarioDraft';
 export const SAVED_RECIPES_KEY = 'takttimesim.v1.savedRecipes';
 
@@ -28,6 +29,32 @@ export function loadRecipeDraft(
   }
 
   return cloneRecipe(fallbackRecipe);
+}
+
+export function loadRecipeMixDraft(
+  storage: StorageLike | undefined,
+  fallbackRecipe: Recipe,
+  machineName: string,
+): RecipeMix {
+  const stored = readJson(storage, RECIPE_MIX_DRAFT_KEY);
+
+  if (isRecipeMix(stored)) {
+    const entries = stored.entries.filter((entry) => entry.recipe.machineName === machineName);
+
+    if (entries.length > 0) {
+      return cloneRecipeMix({ entries });
+    }
+  }
+
+  return {
+    entries: [
+      {
+        id: 'recipe-1',
+        recipe: loadRecipeDraft(storage, fallbackRecipe, machineName),
+        percentage: 100,
+      },
+    ],
+  };
 }
 
 export function loadScenarioDraft(
@@ -73,6 +100,17 @@ export function saveRecipeDraft(
   }
 
   return writeJson(storage, RECIPE_DRAFT_KEY, recipe);
+}
+
+export function saveRecipeMixDraft(
+  storage: StorageLike | undefined,
+  recipeMix: RecipeMix,
+): SaveResult {
+  if (!isRecipeMix(recipeMix)) {
+    return { ok: false, message: 'Recipe mix draft is not valid enough to save.' };
+  }
+
+  return writeJson(storage, RECIPE_MIX_DRAFT_KEY, recipeMix);
 }
 
 export function saveScenarioDraft(
@@ -184,6 +222,26 @@ function isSavedRecipe(value: unknown): value is SavedRecipe {
   );
 }
 
+function isRecipeMix(value: unknown): value is RecipeMix {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.entries) &&
+    value.entries.every(isRecipeMixEntry)
+  );
+}
+
+function isRecipeMixEntry(value: unknown): value is RecipeMix['entries'][number] {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    value.id.trim().length > 0 &&
+    typeof value.percentage === 'number' &&
+    Number.isFinite(value.percentage) &&
+    value.percentage >= 0 &&
+    isRecipe(value.recipe)
+  );
+}
+
 function isRecipe(value: unknown): value is Recipe {
   if (!isRecord(value)) {
     return false;
@@ -224,6 +282,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function cloneRecipeMix(recipeMix: RecipeMix): RecipeMix {
+  return {
+    entries: recipeMix.entries.map((entry) => ({
+      ...entry,
+      recipe: cloneRecipe(entry.recipe),
+    })),
+  };
 }
 
 function cloneRecipe(recipe: Recipe): Recipe {
