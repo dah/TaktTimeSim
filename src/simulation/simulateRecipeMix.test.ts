@@ -40,7 +40,7 @@ function mix(entries: RecipeMix['entries']): RecipeMix {
 }
 
 describe('simulateRecipeMix', () => {
-  it('shows random mixed production improving throughput when recipes bottleneck different stations', () => {
+  it('calculates mixed production from weighted resource workloads', () => {
     const outcome = simulateRecipeMix(
       machine(),
       mix([
@@ -53,14 +53,12 @@ describe('simulateRecipeMix', () => {
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
 
-    expect(outcome.result.randomMixed.effectiveCycleTimeSeconds).toBe(50);
-    expect(outcome.result.groupedProduction.effectiveCycleTimeSeconds).toBe(100);
-    expect(outcome.result.randomMixed.basketsPerShift).toBe(72);
-    expect(outcome.result.groupedProduction.basketsPerShift).toBe(36);
-    expect(outcome.result.throughputDeltaBasketsPerShift).toBe(36);
+    expect(outcome.result.mixedProduction.effectiveCycleTimeSeconds).toBe(50);
+    expect(outcome.result.mixedProduction.basketsPerShift).toBe(72);
+    expect(outcome.result.mixedProduction.bottlenecks).toEqual(['Etch (tank 1)', 'Rinse (tank 2)']);
   });
 
-  it('keeps random mixed and grouped production equal when recipes share a bottleneck', () => {
+  it('keeps the shared bottleneck when recipes use the same limiting station', () => {
     const outcome = simulateRecipeMix(
       machine(),
       mix([
@@ -73,9 +71,8 @@ describe('simulateRecipeMix', () => {
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
 
-    expect(outcome.result.randomMixed.effectiveCycleTimeSeconds).toBe(100);
-    expect(outcome.result.groupedProduction.effectiveCycleTimeSeconds).toBe(100);
-    expect(outcome.result.throughputDeltaBasketsPerShift).toBe(0);
+    expect(outcome.result.mixedProduction.effectiveCycleTimeSeconds).toBe(100);
+    expect(outcome.result.mixedProduction.bottlenecks).toEqual(['Etch (tank 1)']);
   });
 
   it('rejects percentage totals that do not equal 100', () => {

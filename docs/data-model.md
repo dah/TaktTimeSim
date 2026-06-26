@@ -66,7 +66,9 @@ metadata when loading a recipe into an editor.
 ## Recipe mix
 
 A recipe mix is a list of recipes for the selected machine plus the target share
-of production for each recipe.
+of production for each recipe. In the UI, saved recipes for the selected machine
+are shown together as the available recipe list; assigning a percentage to a
+saved recipe includes it in the mix.
 
 ```json
 {
@@ -88,14 +90,11 @@ of production for each recipe.
 Mix percentages must total 100% to run a comparison. Drafts are still saved while
 the total is incomplete so users can edit without losing work.
 
-The mix comparison uses deterministic weighted calculations:
+The mix simulation uses deterministic weighted calculations:
 
-- Random mixed production weights each recipe's per-basket resource workload by
-  its mix share, then uses the maximum weighted resource workload as the
-  effective cycle time.
-- Grouped production weights each recipe's standalone cycle time by its mix
-  share, representing producing all of one recipe before the next while keeping
-  the requested output proportions.
+- Mixed production weights each recipe's per-basket resource workload by its mix
+  share, then uses the maximum weighted resource workload as the effective cycle
+  time.
 
 ## Scenario
 

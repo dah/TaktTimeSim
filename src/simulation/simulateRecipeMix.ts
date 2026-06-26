@@ -86,47 +86,26 @@ export function simulateRecipeMix(
   }
 
   const workloadSummary = summarizeWeightedWorkload(recipeResults);
-  const randomCycleTimeSeconds = maxWorkload(workloadSummary.workloadByResource);
-  const groupedCycleTimeSeconds = recipeResults.reduce(
-    (total, recipeResult) => total + recipeResult.share * recipeResult.result.cycleTimeSeconds,
-    0,
-  );
+  const mixedCycleTimeSeconds = maxWorkload(workloadSummary.workloadByResource);
   const weightedLeadTimeSeconds = recipeResults.reduce(
     (total, recipeResult) => total + recipeResult.share * recipeResult.result.oneBasketLeadTimeSeconds,
     0,
   );
 
-  const randomMixed = productionModeResult(
+  const mixedProduction = productionModeResult(
     machine,
     workloadSummary,
-    randomCycleTimeSeconds,
+    mixedCycleTimeSeconds,
     weightedLeadTimeSeconds,
     scenario,
-    bottlenecksForWorkload(workloadSummary, randomCycleTimeSeconds),
+    bottlenecksForWorkload(workloadSummary, mixedCycleTimeSeconds),
   );
-  const groupedProduction = productionModeResult(
-    machine,
-    workloadSummary,
-    groupedCycleTimeSeconds,
-    weightedLeadTimeSeconds,
-    scenario,
-    groupedBottlenecks(recipeResults),
-  );
-  const throughputDeltaBasketsPerShift =
-    randomMixed.basketsPerShift - groupedProduction.basketsPerShift;
-  const throughputDeltaPercent =
-    groupedProduction.basketsPerShift === 0
-      ? 0
-      : (throughputDeltaBasketsPerShift / groupedProduction.basketsPerShift) * 100;
 
   return {
     ok: true,
     result: {
-      randomMixed,
-      groupedProduction,
+      mixedProduction,
       recipeResults,
-      throughputDeltaBasketsPerShift,
-      throughputDeltaPercent,
     },
   };
 }
@@ -200,14 +179,6 @@ function bottlenecksForWorkload(
   return Array.from(workloadSummary.workloadByResource.entries())
     .filter(([, workloadSeconds]) => Math.abs(workloadSeconds - cycleTimeSeconds) < EPSILON)
     .map(([resourceId]) => workloadSummary.templateByResource.get(resourceId)?.label ?? resourceId);
-}
-
-function groupedBottlenecks(recipeResults: RecipeMixRecipeResult[]): string[] {
-  return recipeResults.flatMap((recipeResult) =>
-    recipeResult.result.bottlenecks.map(
-      (bottleneck) => `${recipeResult.recipeName}: ${bottleneck}`,
-    ),
-  );
 }
 
 function resourceOrder(machine: MachineSpec, resourceId: string): number {

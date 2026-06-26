@@ -42,7 +42,7 @@ interface AppState {
   scenario: Scenario;
   savedRecipes: SavedRecipe[];
   activeRecipeIds: Record<string, string>;
-  selectedRecipeIds: Record<string, string>;
+  editingEntryId?: string;
   dirtyRecipeIds: Set<string>;
   statusMessages: Record<string, StatusMessage | undefined>;
 }
@@ -54,7 +54,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     scenario: { ...options.initialScenario },
     savedRecipes: options.initialSavedRecipes.map(cloneSavedRecipe),
     activeRecipeIds: {},
-    selectedRecipeIds: {},
+    editingEntryId: initialRecipeMix.entries[0]?.id,
     dirtyRecipeIds: new Set(),
     statusMessages: {},
   };
@@ -96,7 +96,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     header.innerHTML = `
       <p class="eyebrow">Local-first productivity model</p>
       <h1>TaktTimeSim</h1>
-      <p>Edit a U50 recipe mix, adjust simple movement assumptions, and compare mixed versus grouped production throughput.</p>
+      <p>Edit a U50 recipe mix, adjust simple movement assumptions, and estimate mixed production throughput.</p>
     `;
     return header;
   }
@@ -118,7 +118,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       state.recipeMix = exampleRecipeMix();
       state.scenario = { ...options.defaultScenario };
       state.activeRecipeIds = {};
-      state.selectedRecipeIds = {};
+      state.editingEntryId = state.recipeMix.entries[0]?.id;
       state.dirtyRecipeIds = new Set();
       state.statusMessages = {};
       nextRecipeNumber = 2;
@@ -134,10 +134,13 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     const totalText = element('p', 'percentage-total');
     totalText.textContent = `Mix total: ${formatNumber(total)}%`;
 
-    const panels = element('div', 'recipe-panels');
-    state.recipeMix.entries.forEach((entry) => {
-      panels.append(recipePanel(entry));
-    });
+    const availableRecipes = availableRecipesTemplate();
+
+    const editor = element('div', 'recipe-panels');
+    const activeEntry = currentEditorEntry();
+    if (activeEntry) {
+      editor.append(recipePanel(activeEntry));
+    }
 
     const addButton = element('button', 'secondary-button');
     addButton.type = 'button';
@@ -151,12 +154,84 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
         percentage: 0,
       };
       state.recipeMix.entries.push(entry);
+      state.editingEntryId = entry.id;
       markRecipeDirty(entry.id);
       render();
     });
 
-    section.append(titleRow, totalText, panels, addButton);
+    section.append(titleRow, totalText, availableRecipes, editor, addButton);
     return section;
+  }
+
+  function availableRecipesTemplate(): HTMLElement {
+    const wrapper = element('div', 'available-recipes');
+    wrapper.innerHTML = '<h3>Available recipes</h3>';
+    const savedRecipes = visibleSavedRecipes();
+
+    if (savedRecipes.length === 0) {
+      const empty = element('p', 'recipe-library-hint');
+      empty.textContent = 'Save recipes to make them available for mixed production.';
+      wrapper.append(empty);
+      return wrapper;
+    }
+
+    const table = element('table', 'available-recipes-table');
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Recipe</th>
+          <th>Last saved</th>
+          <th>Mix percentage</th>
+          <th></th>
+        </tr>
+      </thead>
+    `;
+    const body = element('tbody');
+
+    for (const savedRecipe of savedRecipes) {
+      const entry = findMixEntryForSavedRecipe(savedRecipe);
+      const row = element('tr');
+      const nameCell = element('td');
+      nameCell.textContent = savedRecipe.name || 'Untitled recipe';
+
+      const updatedCell = element('td');
+      updatedCell.textContent = formatDate(savedRecipe.updatedAt);
+
+      const percentageCell = element('td');
+      const percentageInput = element('input');
+      percentageInput.type = 'number';
+      percentageInput.min = '0';
+      percentageInput.step = '1';
+      percentageInput.dataset.focusKey = `available-recipe-${savedRecipe.id}-percentage`;
+      percentageInput.value = numberInputValue(entry?.percentage ?? 0);
+      percentageInput.addEventListener('input', () => {
+        setSavedRecipePercentage(savedRecipe, parseNumberInput(percentageInput.value));
+        render();
+      });
+      percentageCell.append(percentageInput);
+
+      const actionCell = element('td');
+      const editButton = element('button', 'secondary-button');
+      editButton.type = 'button';
+      editButton.textContent = 'Edit';
+      editButton.addEventListener('click', () => {
+        const entryToEdit = ensureSavedRecipeEntry(savedRecipe);
+        state.editingEntryId = entryToEdit.id;
+        render();
+      });
+      const deleteButton = element('button', 'link-button');
+      deleteButton.type = 'button';
+      deleteButton.textContent = 'Delete';
+      deleteButton.addEventListener('click', () => deleteSavedRecipe(savedRecipe));
+      actionCell.append(editButton, deleteButton);
+
+      row.append(nameCell, updatedCell, percentageCell, actionCell);
+      body.append(row);
+    }
+
+    table.append(body);
+    wrapper.append(table);
+    return wrapper;
   }
 
   function recipePanel(entry: RecipeMixEntry): HTMLElement {
@@ -177,6 +252,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
         percentage: 0,
       };
       state.recipeMix.entries.push(duplicate);
+      state.editingEntryId = duplicate.id;
       markRecipeDirty(duplicate.id);
       render();
     });
@@ -189,9 +265,11 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       removeButton.addEventListener('click', () => {
         state.recipeMix.entries = state.recipeMix.entries.filter((candidate) => candidate.id !== entry.id);
         delete state.activeRecipeIds[entry.id];
-        delete state.selectedRecipeIds[entry.id];
         delete state.statusMessages[entry.id];
         state.dirtyRecipeIds.delete(entry.id);
+        if (state.editingEntryId === entry.id) {
+          state.editingEntryId = state.recipeMix.entries[0]?.id;
+        }
         render();
       });
       actions.append(removeButton);
@@ -213,19 +291,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     });
     nameLabel.append(nameInput);
 
-    const percentageLabel = labelWithText('Mix percentage');
-    const percentageInput = element('input');
-    percentageInput.type = 'number';
-    percentageInput.min = '0';
-    percentageInput.step = '1';
-    percentageInput.dataset.focusKey = `recipe-${entry.id}-percentage`;
-    percentageInput.value = numberInputValue(entry.percentage);
-    percentageInput.addEventListener('input', () => {
-      entry.percentage = parseNumberInput(percentageInput.value);
-      render();
-    });
-    percentageLabel.append(percentageInput);
-    grid.append(nameLabel, percentageLabel);
+    grid.append(nameLabel);
 
     const table = element('table', 'stage-table');
     table.innerHTML = `
@@ -254,52 +320,26 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       render();
     });
 
-    panel.append(header, recipeLibraryTemplate(entry, recipeOutcome), grid, table, addStageButton);
+    panel.append(header, recipeSaveActionsTemplate(entry, recipeOutcome), grid, table, addStageButton);
     return panel;
   }
 
-  function recipeLibraryTemplate(entry: RecipeMixEntry, outcome: SimulationOutcome): HTMLElement {
+  function recipeSaveActionsTemplate(entry: RecipeMixEntry, outcome: SimulationOutcome): HTMLElement {
     const wrapper = element('div', 'recipe-library');
-    const savedRecipes = visibleSavedRecipes();
-    const selectedRecipeId = state.selectedRecipeIds[entry.id] ?? '';
-    const controls = element('div', 'recipe-library-controls');
-
-    const selectLabel = labelWithText('Saved recipes');
-    const select = element('select');
-    select.dataset.focusKey = `recipe-${entry.id}-saved-recipe-select`;
-    select.append(optionElement('', 'Choose saved recipe...', selectedRecipeId === ''));
-
-    for (const savedRecipe of savedRecipes) {
-      select.append(
-        optionElement(
-          savedRecipe.id,
-          `${savedRecipe.name} - updated ${formatDate(savedRecipe.updatedAt)}`,
-          savedRecipe.id === selectedRecipeId,
-        ),
-      );
-    }
-
-    select.addEventListener('change', () => {
-      state.selectedRecipeIds[entry.id] = select.value;
-      render();
-    });
-    selectLabel.append(select);
-
     const actions = element('div', 'recipe-library-actions');
-    const loadButton = actionButton('Load', selectedRecipeId === '', () => loadSelectedRecipe(entry));
     const saveButton = actionButton('Save', !canSaveRecipe(outcome), () => saveActiveRecipe(entry, outcome, false));
     const saveAsButton = actionButton('Save as new', !canSaveRecipe(outcome), () => saveActiveRecipe(entry, outcome, true));
-    const deleteButton = actionButton('Delete', selectedRecipeId === '', () => deleteSelectedRecipe(entry));
-    deleteButton.classList.add('danger-button');
-    actions.append(loadButton, saveButton, saveAsButton, deleteButton);
+    actions.append(saveButton, saveAsButton);
 
-    controls.append(selectLabel, actions);
-    wrapper.append(controls);
+    wrapper.append(actions);
 
     const hint = element('p', 'recipe-library-hint');
+    const activeRecipe = state.savedRecipes.find((savedRecipe) => savedRecipe.id === state.activeRecipeIds[entry.id]);
     hint.textContent = state.dirtyRecipeIds.has(entry.id)
       ? 'Unsaved recipe changes are kept as a draft on this device. Use Save to update your saved list.'
-      : 'This recipe is saved. Draft recovery still restores the latest mix after refresh.';
+      : activeRecipe
+        ? `Saved as "${activeRecipe.name}". Draft recovery still restores the latest mix after refresh.`
+        : 'Draft recovery still restores the latest mix after refresh.';
     wrapper.append(hint);
 
     const message = state.statusMessages[entry.id];
@@ -426,27 +466,21 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       return section;
     }
 
-    const comparison = element('div', 'metrics-grid');
+    const summary = element('div', 'metrics-grid');
     const metrics = [
-      ['Random mixed baskets/shift', formatNumber(outcome.result.randomMixed.basketsPerShift)],
-      ['Grouped baskets/shift', formatNumber(outcome.result.groupedProduction.basketsPerShift)],
-      ['Difference baskets/shift', formatSignedNumber(outcome.result.throughputDeltaBasketsPerShift)],
-      ['Difference percent', `${formatSignedNumber(outcome.result.throughputDeltaPercent)}%`],
+      ['Mixed baskets/shift', formatNumber(outcome.result.mixedProduction.basketsPerShift)],
+      ['Mixed baskets/hour', formatNumber(outcome.result.mixedProduction.basketsPerHour)],
+      ['Effective takt/cycle time', formatSeconds(outcome.result.mixedProduction.effectiveCycleTimeSeconds)],
+      ['Weighted one-basket lead time', formatSeconds(outcome.result.mixedProduction.oneBasketLeadTimeSeconds)],
     ];
 
     for (const [label, value] of metrics) {
       const card = element('div', 'metric');
       card.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
-      comparison.append(card);
+      summary.append(card);
     }
 
-    const modes = element('div', 'mode-results');
-    modes.append(
-      productionModeTemplate('Random mixed production', outcome.result.randomMixed),
-      productionModeTemplate('Grouped production', outcome.result.groupedProduction),
-    );
-
-    section.append(comparison, modes);
+    section.append(summary, productionModeTemplate('Mixed production', outcome.result.mixedProduction));
     return section;
   }
 
@@ -503,27 +537,42 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     return table;
   }
 
-  function loadSelectedRecipe(entry: RecipeMixEntry): void {
-    const selectedRecipeId = state.selectedRecipeIds[entry.id] ?? '';
-    const savedRecipe = state.savedRecipes.find((recipe) => recipe.id === selectedRecipeId);
+  function findMixEntryForSavedRecipe(savedRecipe: SavedRecipe): RecipeMixEntry | undefined {
+    return state.recipeMix.entries.find((entry) => state.activeRecipeIds[entry.id] === savedRecipe.id)
+      ?? state.recipeMix.entries.find((entry) => recipesMatch(entry.recipe, savedRecipe));
+  }
 
-    if (!savedRecipe) {
-      return;
+  function ensureSavedRecipeEntry(savedRecipe: SavedRecipe): RecipeMixEntry {
+    const existing = findMixEntryForSavedRecipe(savedRecipe);
+
+    if (existing) {
+      state.activeRecipeIds[existing.id] = savedRecipe.id;
+      if (!state.dirtyRecipeIds.has(existing.id)) {
+        existing.recipe = savedRecipeToRecipe(savedRecipe);
+      }
+      return existing;
     }
 
-    if (
-      state.dirtyRecipeIds.has(entry.id) &&
-      !window.confirm('Load this saved recipe and replace the current unsaved recipe changes?')
-    ) {
-      return;
-    }
-
-    entry.recipe = savedRecipeToRecipe(savedRecipe);
+    const entry: RecipeMixEntry = {
+      id: nextRecipeId(),
+      recipe: savedRecipeToRecipe(savedRecipe),
+      percentage: 0,
+    };
+    state.recipeMix.entries.push(entry);
     state.activeRecipeIds[entry.id] = savedRecipe.id;
-    state.selectedRecipeIds[entry.id] = savedRecipe.id;
     state.dirtyRecipeIds.delete(entry.id);
-    state.statusMessages[entry.id] = { kind: 'success', text: `Loaded "${savedRecipe.name}".` };
-    render();
+    return entry;
+  }
+
+  function setSavedRecipePercentage(savedRecipe: SavedRecipe, percentage: number): void {
+    const entry = ensureSavedRecipeEntry(savedRecipe);
+    entry.percentage = percentage;
+    state.statusMessages[entry.id] = undefined;
+  }
+
+  function currentEditorEntry(): RecipeMixEntry | undefined {
+    return state.recipeMix.entries.find((entry) => entry.id === state.editingEntryId)
+      ?? state.recipeMix.entries[0];
   }
 
   function saveActiveRecipe(entry: RecipeMixEntry, outcome: SimulationOutcome, forceNew: boolean): void {
@@ -551,7 +600,6 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
 
     state.savedRecipes = nextRecipes;
     state.activeRecipeIds[entry.id] = nextRecipe.id;
-    state.selectedRecipeIds[entry.id] = nextRecipe.id;
     state.dirtyRecipeIds.delete(entry.id);
     state.statusMessages[entry.id] = {
       kind: 'success',
@@ -560,14 +608,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     render();
   }
 
-  function deleteSelectedRecipe(entry: RecipeMixEntry): void {
-    const selectedRecipeId = state.selectedRecipeIds[entry.id] ?? '';
-    const savedRecipe = state.savedRecipes.find((recipe) => recipe.id === selectedRecipeId);
-
-    if (!savedRecipe) {
-      return;
-    }
-
+  function deleteSavedRecipe(savedRecipe: SavedRecipe): void {
     if (!window.confirm(`Delete saved recipe "${savedRecipe.name}"? Current editor contents will remain open.`)) {
       return;
     }
@@ -576,22 +617,26 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     const result = saveSavedRecipes(options.storage, nextRecipes);
 
     if (!result.ok) {
-      state.statusMessages[entry.id] = { kind: 'error', text: result.message ?? 'Unable to delete recipe.' };
+      const entry = findMixEntryForSavedRecipe(savedRecipe);
+      if (entry) {
+        state.statusMessages[entry.id] = { kind: 'error', text: result.message ?? 'Unable to delete recipe.' };
+      }
       render();
       return;
     }
 
     state.savedRecipes = nextRecipes;
+    const affectedEntryIds: string[] = [];
     for (const recipeEntry of state.recipeMix.entries) {
       if (state.activeRecipeIds[recipeEntry.id] === savedRecipe.id) {
         delete state.activeRecipeIds[recipeEntry.id];
         state.dirtyRecipeIds.add(recipeEntry.id);
-      }
-      if (state.selectedRecipeIds[recipeEntry.id] === savedRecipe.id) {
-        state.selectedRecipeIds[recipeEntry.id] = '';
+        affectedEntryIds.push(recipeEntry.id);
       }
     }
-    state.statusMessages[entry.id] = { kind: 'success', text: `Deleted "${savedRecipe.name}".` };
+    for (const entryId of affectedEntryIds) {
+      state.statusMessages[entryId] = { kind: 'success', text: `Deleted "${savedRecipe.name}".` };
+    }
     render();
   }
 
@@ -609,11 +654,9 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
 
     if (matchedRecipe) {
       state.activeRecipeIds[entry.id] = matchedRecipe.id;
-      state.selectedRecipeIds[entry.id] = matchedRecipe.id;
       state.dirtyRecipeIds.delete(entry.id);
     } else {
       state.activeRecipeIds[entry.id] = '';
-      state.selectedRecipeIds[entry.id] = '';
       state.dirtyRecipeIds.add(entry.id);
     }
   }
@@ -670,14 +713,6 @@ function labelWithText(text: string): HTMLLabelElement {
   return label;
 }
 
-function optionElement(value: string, text: string, selected: boolean): HTMLOptionElement {
-  const option = element('option');
-  option.value = value;
-  option.textContent = text;
-  option.selected = selected;
-  return option;
-}
-
 function actionButton(text: string, disabled: boolean, onClick: () => void): HTMLButtonElement {
   const button = element('button', 'secondary-button');
   button.type = 'button';
@@ -721,11 +756,6 @@ function formatNumber(value: number): string {
   }).format(value);
 }
 
-function formatSignedNumber(value: number): string {
-  const formatted = formatNumber(value);
-  return value > 0 ? `+${formatted}` : formatted;
-}
-
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
@@ -765,10 +795,10 @@ function recipesMatch(left: Recipe, right: Recipe): boolean {
 
 function escapeHtml(value: string): string {
   return value
-    .replaceAll('&', '&')
-    .replaceAll('<', '<')
-    .replaceAll('>', '>')
-    .replaceAll('"', '"')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
 }
 

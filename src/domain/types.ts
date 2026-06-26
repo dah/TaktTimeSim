@@ -101,12 +101,9 @@ export interface RecipeMixRecipeResult {
   result: SimulationResult;
 }
 
-export interface RecipeMixComparisonResult {
-  randomMixed: ProductionModeResult;
-  groupedProduction: ProductionModeResult;
+export interface RecipeMixResult {
+  mixedProduction: ProductionModeResult;
   recipeResults: RecipeMixRecipeResult[];
-  throughputDeltaBasketsPerShift: number;
-  throughputDeltaPercent: number;
 }
 
 export type SimulationOutcome =
@@ -114,5 +111,5 @@ export type SimulationOutcome =
   | { ok: false; errors: ValidationError[] };
 
 export type RecipeMixSimulationOutcome =
-  | { ok: true; result: RecipeMixComparisonResult }
+  | { ok: true; result: RecipeMixResult }
   | { ok: false; errors: ValidationError[] };
