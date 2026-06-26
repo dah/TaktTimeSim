@@ -32,6 +32,12 @@ export interface Recipe {
   stages: RecipeStage[];
 }
 
+export interface SavedRecipe extends Recipe {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Scenario {
   moveTimeSeconds: number;
   shiftLengthHours: number;

@@ -188,9 +188,13 @@ Open the URL printed by Vite.
 
 - Change process times and confirm the results update.
 - Add or remove recipe stages.
+- Save the current recipe, then load it from the saved recipe list.
+- Edit a loaded recipe and use Save to update it.
+- Use Save as new to duplicate a recipe before changing it.
+- Delete a saved recipe and confirm the current editor contents remain open.
 - Increase robot move time and confirm the robot can become the bottleneck.
-- Refresh the page and confirm valid edits are restored from local storage.
-- Use reset to restore the bundled example recipe.
+- Refresh the page and confirm edits are restored as a local draft.
+- Use reset to restore the bundled example recipe without deleting saved recipes.
 
 ## Project Structure
 

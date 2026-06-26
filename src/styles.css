@@ -154,14 +154,80 @@ th {
   padding: 10px 16px;
 }
 
-.secondary-button:hover {
+.secondary-button:hover:not(:disabled) {
   background: #dbe7f8;
+}
+
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.danger-button {
+  background: #fff0ed;
+  color: #bd3d2f;
+}
+
+.danger-button:hover:not(:disabled) {
+  background: #ffe0dc;
 }
 
 .link-button {
   background: transparent;
   color: #bd3d2f;
   padding: 8px;
+}
+
+.recipe-library {
+  background: #f7f9fc;
+  border: 1px solid #e1e8f0;
+  border-radius: 14px;
+  margin-bottom: 18px;
+  padding: 16px;
+}
+
+.recipe-library-controls {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 1fr) auto;
+}
+
+.recipe-library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recipe-library-hint,
+.status-message {
+  margin: 10px 0 0;
+}
+
+.recipe-library-hint {
+  color: #617182;
+  font-size: 0.95rem;
+}
+
+.status-message {
+  border-radius: 10px;
+  font-weight: 700;
+  padding: 10px 12px;
+}
+
+.status-message.success {
+  background: #eef9f1;
+  color: #1f6b35;
+}
+
+.status-message.error {
+  background: #fff4f2;
+  color: #8d271c;
+}
+
+.status-message.info {
+  background: #edf4ff;
+  color: #2458bd;
 }
 
 .form-grid,
@@ -210,6 +276,16 @@ th {
 
   .section-title-row {
     display: block;
+  }
+
+  .recipe-library-controls {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .recipe-library-actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .stage-table {
