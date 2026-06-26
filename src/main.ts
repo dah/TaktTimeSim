@@ -2,7 +2,7 @@ import './styles.css';
 import u50Machine from './data/machines/u50.json';
 import exampleU50Recipe from './data/recipes/example-u50-recipe.json';
 import type { MachineSpec, Recipe, Scenario } from './domain/types';
-import { loadRecipeDraft, loadScenarioDraft } from './storage/localStorageStore';
+import { loadRecipeMixDraft, loadScenarioDraft } from './storage/localStorageStore';
 import { mountApp } from './ui/app';
 
 const machine = u50Machine as MachineSpec;
@@ -13,7 +13,7 @@ const defaultScenario: Scenario = {
 };
 
 const storage = getLocalStorage();
-const initialRecipe = loadRecipeDraft(storage, exampleRecipe, machine.machineName);
+const initialRecipeMix = loadRecipeMixDraft(storage, exampleRecipe, machine.machineName);
 const initialScenario = loadScenarioDraft(storage, defaultScenario);
 const root = document.querySelector<HTMLElement>('#app');
 
@@ -24,7 +24,7 @@ if (!root) {
 mountApp(root, {
   machine,
   exampleRecipe,
-  initialRecipe,
+  initialRecipeMix,
   initialScenario,
   defaultScenario,
   storage,

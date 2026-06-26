@@ -106,7 +106,11 @@ describe('simulate', () => {
     if (!outcome.ok) return;
 
     const etch = outcome.result.utilization.find((entry) => entry.label === 'Etch (tank 1)');
+    const robot = outcome.result.utilization.find((entry) => entry.label === 'Robot');
+    expect(etch?.resourceId).toBe('tank:1');
+    expect(etch?.tankNumber).toBe(1);
     expect(etch?.workloadSeconds).toBe(150);
+    expect(robot?.resourceId).toBe('robot');
   });
 
   it('reports the robot as the bottleneck when move workload is highest', () => {

@@ -33,6 +33,40 @@ Example:
 }
 ```
 
+## Recipe mix
+
+A recipe mix is a list of recipes for the selected machine plus the target share
+of production for each recipe.
+
+```json
+{
+  "entries": [
+    {
+      "id": "recipe-1",
+      "percentage": 60,
+      "recipe": { "name": "Recipe A", "machineName": "U50", "stages": [] }
+    },
+    {
+      "id": "recipe-2",
+      "percentage": 40,
+      "recipe": { "name": "Recipe B", "machineName": "U50", "stages": [] }
+    }
+  ]
+}
+```
+
+Mix percentages must total 100% to run a comparison. Drafts are still saved while
+the total is incomplete so users can edit without losing work.
+
+The mix comparison uses deterministic weighted calculations:
+
+- Random mixed production weights each recipe's per-basket resource workload by
+  its mix share, then uses the maximum weighted resource workload as the
+  effective cycle time.
+- Grouped production weights each recipe's standalone cycle time by its mix
+  share, representing producing all of one recipe before the next while keeping
+  the requested output proportions.
+
 ## Scenario
 
 A scenario contains run assumptions that are separate from the machine spec and

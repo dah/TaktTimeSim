@@ -32,6 +32,16 @@ export interface Recipe {
   stages: RecipeStage[];
 }
 
+export interface RecipeMixEntry {
+  id: string;
+  recipe: Recipe;
+  percentage: number;
+}
+
+export interface RecipeMix {
+  entries: RecipeMixEntry[];
+}
+
 export interface Scenario {
   moveTimeSeconds: number;
   shiftLengthHours: number;
@@ -44,8 +54,10 @@ export interface ValidationError {
 }
 
 export interface UtilizationEntry {
+  resourceId: string;
   label: string;
   kind: 'station' | 'robot';
+  tankNumber?: number;
   workloadSeconds: number;
   utilizationPercent: number;
 }
@@ -62,6 +74,36 @@ export interface SimulationResult {
   unloadTankNumber: number;
 }
 
+export interface ProductionModeResult {
+  effectiveCycleTimeSeconds: number;
+  taktTimeSeconds: number;
+  oneBasketLeadTimeSeconds: number;
+  basketsPerHour: number;
+  basketsPerShift: number;
+  bottlenecks: string[];
+  utilization: UtilizationEntry[];
+}
+
+export interface RecipeMixRecipeResult {
+  id: string;
+  recipeName: string;
+  percentage: number;
+  share: number;
+  result: SimulationResult;
+}
+
+export interface RecipeMixComparisonResult {
+  randomMixed: ProductionModeResult;
+  groupedProduction: ProductionModeResult;
+  recipeResults: RecipeMixRecipeResult[];
+  throughputDeltaBasketsPerShift: number;
+  throughputDeltaPercent: number;
+}
+
 export type SimulationOutcome =
   | { ok: true; result: SimulationResult }
+  | { ok: false; errors: ValidationError[] };
+
+export type RecipeMixSimulationOutcome =
+  | { ok: true; result: RecipeMixComparisonResult }
   | { ok: false; errors: ValidationError[] };

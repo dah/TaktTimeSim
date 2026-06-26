@@ -57,8 +57,10 @@ export function simulate(
       }
 
       return {
+        resourceId: `tank:${station.tankNumber}`,
         label: stationLabel(station),
         kind: 'station' as const,
+        tankNumber: station.tankNumber,
         workloadSeconds: totalProcessTime / station.numberOfPositions,
         utilizationPercent: 0,
       };
@@ -66,6 +68,7 @@ export function simulate(
     .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
   utilization.push({
+    resourceId: 'robot',
     label: 'Robot',
     kind: 'robot',
     workloadSeconds: (moveCount * scenario.moveTimeSeconds) / machine.robot.numberOfArms,

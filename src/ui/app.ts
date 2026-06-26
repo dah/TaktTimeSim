@@ -1,33 +1,36 @@
 import type {
   MachineSpec,
+  ProductionModeResult,
   Recipe,
+  RecipeMix,
+  RecipeMixEntry,
+  RecipeMixSimulationOutcome,
   RecipeStage,
   Scenario,
-  SimulationOutcome,
-  SimulationResult,
 } from '../domain/types';
-import { simulate } from '../simulation/simulate';
-import { saveRecipeDraft, saveScenarioDraft } from '../storage/localStorageStore';
+import { simulateRecipeMix } from '../simulation/simulateRecipeMix';
+import { saveRecipeDraft, saveRecipeMixDraft, saveScenarioDraft } from '../storage/localStorageStore';
 
 interface AppOptions {
   machine: MachineSpec;
   exampleRecipe: Recipe;
-  initialRecipe: Recipe;
+  initialRecipeMix: RecipeMix;
   initialScenario: Scenario;
   defaultScenario: Scenario;
   storage?: Storage;
 }
 
 interface AppState {
-  recipe: Recipe;
+  recipeMix: RecipeMix;
   scenario: Scenario;
 }
 
 export function mountApp(root: HTMLElement, options: AppOptions): void {
   const state: AppState = {
-    recipe: cloneRecipe(options.initialRecipe),
+    recipeMix: cloneRecipeMix(options.initialRecipeMix),
     scenario: { ...options.initialScenario },
   };
+  let nextRecipeNumber = state.recipeMix.entries.length + 1;
 
   const unloadStation = options.machine.stations.find(
     (station) => station.name.trim().toLowerCase() === 'unload',
@@ -38,17 +41,18 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
 
   function render(): void {
     const focusKey = currentFocusKey(root);
-    const outcome = simulate(options.machine, state.recipe, state.scenario);
+    const outcome = simulateRecipeMix(options.machine, state.recipeMix, state.scenario);
 
-    if (outcome.ok) {
-      saveRecipeDraft(options.storage, state.recipe);
-      saveScenarioDraft(options.storage, state.scenario);
+    saveRecipeMixDraft(options.storage, state.recipeMix);
+    saveScenarioDraft(options.storage, state.scenario);
+    if (state.recipeMix.entries[0]) {
+      saveRecipeDraft(options.storage, state.recipeMix.entries[0].recipe);
     }
 
     root.innerHTML = '';
     root.append(
       headerTemplate(),
-      recipeTemplate(),
+      recipeMixTemplate(),
       scenarioTemplate(),
       outcomeTemplate(outcome),
     );
@@ -60,17 +64,17 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     header.innerHTML = `
       <p class="eyebrow">Local-first productivity model</p>
       <h1>TaktTimeSim</h1>
-      <p>Edit a U50 process recipe, adjust simple movement assumptions, and estimate throughput.</p>
+      <p>Edit a U50 recipe mix, adjust simple movement assumptions, and compare mixed versus grouped production throughput.</p>
     `;
     return header;
   }
 
-  function recipeTemplate(): HTMLElement {
+  function recipeMixTemplate(): HTMLElement {
     const section = element('section', 'card');
     const titleRow = element('div', 'section-title-row');
     titleRow.innerHTML = `
       <div>
-        <h2>Recipe</h2>
+        <h2>Recipe mix</h2>
         <p>Machine: <strong>${escapeHtml(options.machine.machineName)}</strong></p>
       </div>
     `;
@@ -79,22 +83,100 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     resetButton.type = 'button';
     resetButton.textContent = 'Reset to example';
     resetButton.addEventListener('click', () => {
-      state.recipe = cloneRecipe(options.exampleRecipe);
+      state.recipeMix = exampleRecipeMix();
       state.scenario = { ...options.defaultScenario };
+      nextRecipeNumber = 2;
       render();
     });
     titleRow.append(resetButton);
 
+    const total = state.recipeMix.entries.reduce((sum, entry) => sum + entry.percentage, 0);
+    const totalText = element('p', 'percentage-total');
+    totalText.textContent = `Mix total: ${formatNumber(total)}%`;
+
+    const panels = element('div', 'recipe-panels');
+    state.recipeMix.entries.forEach((entry) => {
+      panels.append(recipePanel(entry));
+    });
+
+    const addButton = element('button', 'secondary-button');
+    addButton.type = 'button';
+    addButton.textContent = 'Add recipe';
+    addButton.addEventListener('click', () => {
+      const recipe = cloneRecipe(options.exampleRecipe);
+      recipe.name = `Recipe ${nextRecipeNumber}`;
+      state.recipeMix.entries.push({
+        id: nextRecipeId(),
+        recipe,
+        percentage: 0,
+      });
+      nextRecipeNumber += 1;
+      render();
+    });
+
+    section.append(titleRow, totalText, panels, addButton);
+    return section;
+  }
+
+  function recipePanel(entry: RecipeMixEntry): HTMLElement {
+    const panel = element('div', 'recipe-panel');
+    const header = element('div', 'recipe-panel-header');
+    header.innerHTML = `<h3>${escapeHtml(entry.recipe.name || 'Untitled recipe')}</h3>`;
+
+    const actions = element('div', 'recipe-panel-actions');
+    const duplicateButton = element('button', 'secondary-button');
+    duplicateButton.type = 'button';
+    duplicateButton.textContent = 'Duplicate';
+    duplicateButton.addEventListener('click', () => {
+      const recipe = cloneRecipe(entry.recipe);
+      recipe.name = `${recipe.name} copy`;
+      state.recipeMix.entries.push({
+        id: nextRecipeId(),
+        recipe,
+        percentage: 0,
+      });
+      render();
+    });
+    actions.append(duplicateButton);
+
+    if (state.recipeMix.entries.length > 1) {
+      const removeButton = element('button', 'link-button');
+      removeButton.type = 'button';
+      removeButton.textContent = 'Remove';
+      removeButton.addEventListener('click', () => {
+        state.recipeMix.entries = state.recipeMix.entries.filter((candidate) => candidate.id !== entry.id);
+        render();
+      });
+      actions.append(removeButton);
+    }
+
+    header.append(actions);
+
+    const grid = element('div', 'form-grid');
     const nameLabel = labelWithText('Recipe name');
     const nameInput = element('input');
     nameInput.type = 'text';
-    nameInput.dataset.focusKey = 'recipe-name';
-    nameInput.value = state.recipe.name;
+    nameInput.dataset.focusKey = `recipe-${entry.id}-name`;
+    nameInput.value = entry.recipe.name;
     nameInput.addEventListener('input', () => {
-      state.recipe.name = nameInput.value;
+      entry.recipe.name = nameInput.value;
       render();
     });
     nameLabel.append(nameInput);
+
+    const percentageLabel = labelWithText('Mix percentage');
+    const percentageInput = element('input');
+    percentageInput.type = 'number';
+    percentageInput.min = '0';
+    percentageInput.step = '1';
+    percentageInput.dataset.focusKey = `recipe-${entry.id}-percentage`;
+    percentageInput.value = numberInputValue(entry.percentage);
+    percentageInput.addEventListener('input', () => {
+      entry.percentage = parseNumberInput(percentageInput.value);
+      render();
+    });
+    percentageLabel.append(percentageInput);
+    grid.append(nameLabel, percentageLabel);
 
     const table = element('table', 'stage-table');
     table.innerHTML = `
@@ -108,27 +190,25 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       </thead>
     `;
     const body = element('tbody');
-
-    state.recipe.stages.forEach((stage, index) => {
-      body.append(stageRow(stage, index));
+    entry.recipe.stages.forEach((stage, index) => {
+      body.append(stageRow(entry, stage, index));
     });
-
     table.append(body);
 
-    const addButton = element('button', 'secondary-button');
-    addButton.type = 'button';
-    addButton.textContent = 'Add stage';
-    addButton.addEventListener('click', () => {
+    const addStageButton = element('button', 'secondary-button');
+    addStageButton.type = 'button';
+    addStageButton.textContent = 'Add stage';
+    addStageButton.addEventListener('click', () => {
       const fallbackTank = editableStations.find((station) => station.tankNumber !== 0)?.tankNumber ?? 0;
-      state.recipe.stages.push({ tankNumber: fallbackTank, processTimeSeconds: 0 });
+      entry.recipe.stages.push({ tankNumber: fallbackTank, processTimeSeconds: 0 });
       render();
     });
 
-    section.append(titleRow, nameLabel, table, addButton);
-    return section;
+    panel.append(header, grid, table, addStageButton);
+    return panel;
   }
 
-  function stageRow(stage: RecipeStage, index: number): HTMLTableRowElement {
+  function stageRow(entry: RecipeMixEntry, stage: RecipeStage, index: number): HTMLTableRowElement {
     const row = element('tr');
 
     const stepCell = element('td');
@@ -140,7 +220,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       tankCell.textContent = station ? `${station.tankNumber} - ${station.name}` : '0';
     } else {
       const select = element('select');
-      select.dataset.focusKey = `stage-tank-${index}`;
+      select.dataset.focusKey = `recipe-${entry.id}-stage-tank-${index}`;
       for (const station of editableStations) {
         if (station.tankNumber === 0) {
           continue;
@@ -164,7 +244,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     timeInput.type = 'number';
     timeInput.min = '0';
     timeInput.step = '1';
-    timeInput.dataset.focusKey = `stage-time-${index}`;
+    timeInput.dataset.focusKey = `recipe-${entry.id}-stage-time-${index}`;
     timeInput.value = numberInputValue(stage.processTimeSeconds);
     timeInput.addEventListener('input', () => {
       stage.processTimeSeconds = parseNumberInput(timeInput.value);
@@ -178,7 +258,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       removeButton.type = 'button';
       removeButton.textContent = 'Remove';
       removeButton.addEventListener('click', () => {
-        state.recipe.stages.splice(index, 1);
+        entry.recipe.stages.splice(index, 1);
         render();
       });
       actionCell.append(removeButton);
@@ -224,7 +304,7 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     return section;
   }
 
-  function outcomeTemplate(outcome: SimulationOutcome): HTMLElement {
+  function outcomeTemplate(outcome: RecipeMixSimulationOutcome): HTMLElement {
     const section = element('section', 'card results-card');
     section.innerHTML = '<h2>Results</h2>';
 
@@ -239,15 +319,42 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
       return section;
     }
 
-    section.append(resultMetrics(outcome.result), utilizationTable(outcome.result));
+    const comparison = element('div', 'metrics-grid');
+    const metrics = [
+      ['Random mixed baskets/shift', formatNumber(outcome.result.randomMixed.basketsPerShift)],
+      ['Grouped baskets/shift', formatNumber(outcome.result.groupedProduction.basketsPerShift)],
+      ['Difference baskets/shift', formatSignedNumber(outcome.result.throughputDeltaBasketsPerShift)],
+      ['Difference percent', `${formatSignedNumber(outcome.result.throughputDeltaPercent)}%`],
+    ];
+
+    for (const [label, value] of metrics) {
+      const card = element('div', 'metric');
+      card.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
+      comparison.append(card);
+    }
+
+    const modes = element('div', 'mode-results');
+    modes.append(
+      productionModeTemplate('Random mixed production', outcome.result.randomMixed),
+      productionModeTemplate('Grouped production', outcome.result.groupedProduction),
+    );
+
+    section.append(comparison, modes);
     return section;
   }
 
-  function resultMetrics(result: SimulationResult): HTMLElement {
+  function productionModeTemplate(title: string, result: ProductionModeResult): HTMLElement {
+    const container = element('div', 'mode-result');
+    container.innerHTML = `<h3>${escapeHtml(title)}</h3>`;
+    container.append(resultMetrics(result), utilizationTable(result));
+    return container;
+  }
+
+  function resultMetrics(result: ProductionModeResult): HTMLElement {
     const grid = element('div', 'metrics-grid');
     const metrics = [
-      ['Estimated takt/cycle time', formatSeconds(result.cycleTimeSeconds)],
-      ['One-basket lead time', formatSeconds(result.oneBasketLeadTimeSeconds)],
+      ['Effective takt/cycle time', formatSeconds(result.effectiveCycleTimeSeconds)],
+      ['Weighted one-basket lead time', formatSeconds(result.oneBasketLeadTimeSeconds)],
       ['Baskets per hour', formatNumber(result.basketsPerHour)],
       ['Baskets per shift', formatNumber(result.basketsPerShift)],
       ['Bottleneck', result.bottlenecks.join(', ')],
@@ -262,13 +369,13 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
     return grid;
   }
 
-  function utilizationTable(result: SimulationResult): HTMLElement {
+  function utilizationTable(result: ProductionModeResult): HTMLElement {
     const table = element('table', 'utilization-table');
     table.innerHTML = `
       <thead>
         <tr>
           <th>Resource</th>
-          <th>Workload / basket</th>
+          <th>Weighted workload / basket</th>
           <th>Utilization</th>
         </tr>
       </thead>
@@ -287,6 +394,22 @@ export function mountApp(root: HTMLElement, options: AppOptions): void {
 
     table.append(body);
     return table;
+  }
+
+  function exampleRecipeMix(): RecipeMix {
+    return {
+      entries: [
+        {
+          id: 'recipe-1',
+          recipe: cloneRecipe(options.exampleRecipe),
+          percentage: 100,
+        },
+      ],
+    };
+  }
+
+  function nextRecipeId(): string {
+    return `recipe-${Date.now().toString(36)}-${nextRecipeNumber}`;
   }
 
   render();
@@ -331,6 +454,20 @@ function formatNumber(value: number): string {
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatSignedNumber(value: number): string {
+  const formatted = formatNumber(value);
+  return value > 0 ? `+${formatted}` : formatted;
+}
+
+function cloneRecipeMix(recipeMix: RecipeMix): RecipeMix {
+  return {
+    entries: recipeMix.entries.map((entry) => ({
+      ...entry,
+      recipe: cloneRecipe(entry.recipe),
+    })),
+  };
 }
 
 function cloneRecipe(recipe: Recipe): Recipe {
