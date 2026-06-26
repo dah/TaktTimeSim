@@ -12,6 +12,61 @@ static files that can be opened locally after unzipping.
 - Node.js 20 or newer
 - npm
 
+npm is installed automatically when you install Node.js. You normally do not
+install npm separately.
+
+Install Node.js from the official download page:
+
+```text
+https://nodejs.org/
+```
+
+Choose the LTS version unless you have a specific reason to use a newer current
+release.
+
+### macOS
+
+Option 1: Download and run the macOS installer from:
+
+```text
+https://nodejs.org/
+```
+
+Option 2: If you use Homebrew:
+
+```sh
+brew install node
+```
+
+### Linux
+
+Use your distribution's package manager or install Node.js from:
+
+```text
+https://nodejs.org/
+```
+
+For Ubuntu/Debian, your system package manager may provide Node.js:
+
+```sh
+sudo apt update
+sudo apt install nodejs npm
+```
+
+If that installs an older Node.js version, use the official Node.js download
+instead.
+
+### Windows
+
+Download and run the Windows installer from:
+
+```text
+https://nodejs.org/
+```
+
+After installation, open a new PowerShell window so the `node` and `npm`
+commands are available.
+
 Check your installed versions:
 
 ```sh
